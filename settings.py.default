@@ -1,0 +1,23 @@
+from twisted.words.im import ircsupport
+
+accounts = [
+    ircsupport.IRCAccount("IRC", 1,
+        "DefaultBot",       # nickname
+        "",                 # passwd
+        "irc.freenode.net", # irc server
+        6667,               # port
+        "#zonkb0t",         # comma-seperated list of channels
+    )
+]
+
+redis_prefix = 'DefaultBot:'
+
+cd = {
+    'a' : ['red',     {'attrs':['bold']} ],
+    'e' : ['red',     {}                 ],
+    'n' : ['yellow',  {}                 ],
+    'c' : ['magenta', {}                 ],
+    't' : ['magenta', {'attrs':['bold']} ],
+    'pm': ['blue',    {}                 ],
+    'cm': ['green',   {}                 ],
+}
