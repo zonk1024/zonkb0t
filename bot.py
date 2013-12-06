@@ -8,15 +8,15 @@ import botcommand
 class MinConversation(basechat.Conversation):
     def show(self):
         pass
-    
+
     def hide(self):
         pass
-    
+
     def showMessage(self, text, metadata=None):
         logger.log(('<', self.person.name, '> ', text), (None, settings.cd['n'], None, settings.cd['pm']))
         bc = botcommand.BotCommand(self.person.name, text, self.sendText)
         bc.run()
-        
+
     def contactChangedNick(self, person, newnick):
         logger.log((' -!- ', person.name, ' is now known as ', newnick), (settings.cd['a'], settings.cd['n'], None, settings.cd['n']))
         basechat.Conversation.contactChangedNick(self, person, newnick)
@@ -49,11 +49,11 @@ class MinGroupConversation(basechat.GroupConversation):
         basechat.GroupConversation.memberLeft(self, member)
 
 class MinChat(basechat.ChatUI):
-    def getGroupConversation(self, group, Class=MinGroupConversation, 
+    def getGroupConversation(self, group, Class=MinGroupConversation,
         stayHidden=0):
-        return basechat.ChatUI.getGroupConversation(self, group, Class, 
+        return basechat.ChatUI.getGroupConversation(self, group, Class,
             stayHidden)
-    def getConversation(self, person, Class=MinConversation, 
+    def getConversation(self, person, Class=MinConversation,
         stayHidden=0):
         return basechat.ChatUI.getConversation(self, person, Class, stayHidden)
 

@@ -13,9 +13,13 @@ class SessionManager(object):
         self.user = user
         template_key = '{a}{b}{}:{c}'
         template_dict = {'a': settings.redis_prefix, 'b': self.redis_seg, 'c': self.user}
+        #botname:auth:password:username
         self.password_key = template_key.format('password', **template_dict)
+        #botname:auth:session:username
         self.session_key = template_key.format('session', **template_dict)
+        #botname:auth:challenge:username
         self.challenge_key = template_key.format('challenge', **template_dict)
+        #botname:auth:user_level:username
         self.user_level_key = template_key.format('user_level', **template_dict)
 
     @property
@@ -58,4 +62,4 @@ class SessionManager(object):
         return bool(self.r.delete(self.session_key))
 
     def user_level(self):
-        return self.r.get(self.user_level_key)
+        return int(self.r.get(self.user_level_key))
