@@ -8,17 +8,24 @@ import settings
 import logger
 import auth
 
+
+class ReloadException(Exception):
+    pass
+
 class BotCommand(object):
     r = redis.Redis()
     cmd_prefix = '%'
     cmd_map = {
-        'list'  : '_list',
-        'dice'  : '_dice',
-        'url'   : '_url',
-        'run'   : '_run',
-        'echo'  : '_echo',
-        'sudo'  : '_admin',
-        'login' : '_login',
+        'list'   : '_list',
+        'dice'   : '_dice',
+        'url'    : '_url',
+        'run'    : '_run',
+        'echo'   : '_echo',
+        'sudo'   : '_admin',
+        'login'  : '_login',
+        'reddit' : '_reddit',
+        'reload' : '_reload',
+        'test'   : '_test',
     }
 
     def __init__(self, sender, text, callback):
@@ -224,3 +231,26 @@ class BotCommand(object):
             return 'Logged in. Session ttl is {} seconds.'.format(ttl)
         else:
             return 'Attempt failed. Challenge ttl is {} seconds.'.format(self.session.challenge_ttl())
+
+    def _reddit(self, args):
+        output = []
+        if not args:
+            args = ['']
+        for arg in args:
+            if arg:
+                site = 'http://www.reddit.com/r/{}'.format(arg)
+                logger.log((site, ), (None, ))
+            else:
+                site = 'http://www.reddit.com/'
+            bs = BeautifulSoup.BeautifulSOAP(urlgrabber.urlread(site, size=2097152*10))
+            output.extend(bs.findAll('a', 'title'))
+        return '\n'.join('{}: {} {}'.format(i + 1, o.string, o.get('href')) for i, o in enumerate(output[:5]))
+
+    def _reload(self, args):
+        reload(auth)
+        reload(logger)
+        reload(settings)
+        raise ReloadException
+
+    def _test(self, args):
+        return 'yup'

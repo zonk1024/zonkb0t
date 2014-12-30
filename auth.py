@@ -1,4 +1,5 @@
 import redis
+import logger
 import random
 import hashlib
 import settings
@@ -54,7 +55,7 @@ class SessionManager(object):
 
     def has_session(self):
         ttl = self.r.ttl(self.session_key)
-        if not ttl:
+        if not ttl or ttl == -2:
             return 0
         return int(ttl)
 

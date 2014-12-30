@@ -11,4 +11,4 @@ def log(strings, colors):
             out += termcolor.colored(s, c[0], **c[1])
         else:
             out += s
-    print(out)
+    print out
