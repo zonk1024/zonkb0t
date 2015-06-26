@@ -6,11 +6,15 @@ import random
 import hashlib
 import settings
 
+
 class SessionManager(object):
     r = redis.Redis()
     redis_seg = 'auth:'
     challenge_timeout = 90
     session_timeout = 3600
+    GOD_USER = 10
+    TRUSTED_USER = 5
+    BASIC_USER = 1
 
     def __init__(self, user):
         self.user = user
@@ -70,8 +74,23 @@ class SessionManager(object):
     def destroy_session(self):
         return bool(self.r.delete(self.session_key))
 
+    @property
     def user_level(self):
         return int(self.r.get(self.user_level_key))
+
+    @user_level.setter
+    def user_level(self, value):
+        self.r.set(self.user_level_key, value)
+
+
+def requires_login(user_level=SessionManager.TRUSTED_USER):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if args[0].session.has_session() and args[0].session.user_level >= user_level:
+                return func(*args, **kwargs)
+            return 'Requires login, and user_level {}'.format(user_level)
+        return wrapper
+    return decorator
 
 
 if __name__ == '__main__':
@@ -79,5 +98,7 @@ if __name__ == '__main__':
     username = sys.argv[1]
     sm = SessionManager(username)
     if len(sys.argv) == 3:
-        sm.password = sys.argv[2]
+        sm.user_level = sys.argv[2]
+    if len(sys.argv) == 4:
+        sm.password = sys.argv[3]
     sm.create_session()

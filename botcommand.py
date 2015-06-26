@@ -1,12 +1,45 @@
+import auth
+import time
+import Queue
+import redis
+import shlex
+import logger
+import random
+import settings
+import threading
 import subprocess
 import urlgrabber
 import BeautifulSoup
-import redis
-import shlex
-import random
-import settings
-import logger
-import auth
+
+
+class Throttler(object):
+    delay = .5
+    output_function = None
+    queue = Queue.Queue()
+    started = False
+    thread = None
+
+    @classmethod
+    def start(cls):
+        if not cls.started:
+            cls.started = True
+            cls.thread = threading.Thread(target=cls.worker)
+            cls.thread.start()
+
+    @classmethod
+    def worker(cls):
+        while True:
+            try:
+                cls.output_function(cls.queue.get())
+                time.sleep(cls.delay)
+            except Queue.Empty:
+                pass
+
+    @classmethod
+    def enqueue(cls, text):
+        for line in text.split('\n'):
+            cls.queue.put(line)
+        cls.start()
 
 
 class RestartException(Exception):
@@ -30,13 +63,14 @@ class BotCommand(object):
         'reload'  : '_reload',
         'restart' : '_restart',
         'test'    : '_test',
+        'flush'   : '_flush',
     }
 
     def __init__(self, sender, text, callback):
         self.sender = sender
         self.session = auth.SessionManager(sender)
         self.text = text
-        self.callback = callback
+        Throttler.output_function = callback
         self.args = None
         if self.text and self.text[0] == self.cmd_prefix:
             logger.log(('-!- COMMAND FROM -!- ', ': ', sender), (settings.cd['a'], None, settings.cd['n']))
@@ -66,17 +100,16 @@ class BotCommand(object):
             output = getattr(self, self.cmd_map[cmd_name])(self.args)
             if output is not None:
                 logger.log(('-!- COMMAND OUTPUT -!- ', ': ', output), (settings.cd['a'], None, settings.cd['cm']))
-                self.callback(str(output))
+                Throttler.enqueue(str(output))
             else:
                 logger.log(('-!- COMMAND FAILED -!- ',), (settings.cd['a'],))
         else:
             logger.log(('-!- UNREGISTERED COMMAND -!- ', ': ', cmd_name), (settings.cd['e'], None, settings.cd['cm']))
 
     #### ADMIN
+    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _admin(self, args):
         if not args:
-            return None
-        if not self.session.has_session() or self.session.user_level() < 5:
             return None
         if len(args) == 3 and args[0] == 'add':
             self.cmd_map[args[1]] = args[2]
@@ -176,14 +209,14 @@ class BotCommand(object):
         return [random.randint(1, int(roll_parts[1])) for i in range(int(roll_parts[0]))]
 
     #### RUN
+    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _run(self, args):
         if not args:
             return None
-        if self.session.has_session() and self.session.user_level() >= 10:
-            try:
-                return subprocess.check_output(args)
-            except subprocess.CalledProcessError as e:
-                return 'Command exited with error.'
+        try:
+            return subprocess.check_output(args)
+        except subprocess.CalledProcessError as e:
+            return 'Command exited with error.'
 
     #### URL
     def _url(self, args):
@@ -238,8 +271,7 @@ class BotCommand(object):
 
     def _reddit(self, args):
         output = []
-        if not args:
-            args = ['']
+        args = args if args else ['']
         for arg in args:
             if arg:
                 site = 'http://www.reddit.com/r/{}'.format(arg)
@@ -250,18 +282,23 @@ class BotCommand(object):
             output.extend(bs.findAll('a', 'title'))
         return '\n'.join('{}: {} {}'.format(i + 1, o.string, o.get('href')) for i, o in enumerate(output[:5]))
 
+    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _reload(self, args):
-        if self.session.has_session():
-            reload(auth)
-            reload(logger)
-            reload(settings)
-            raise ReloadException
-        return 'Requires session'
+        reload(auth)
+        reload(logger)
+        reload(settings)
+        raise ReloadException
 
+    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _restart(self, args):
-        if self.session.has_session():
-            raise RestartException
-        return 'Requires session'
+        raise RestartException
 
     def _test(self, args):
         return 'yup'
+
+    def _flush(self, args):
+        while True:
+            try:
+                Throttler.queue.get()
+            except Queue.Empty:
+                break
