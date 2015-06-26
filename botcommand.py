@@ -29,17 +29,27 @@ class Throttler(object):
     @classmethod
     def worker(cls):
         while True:
-            try:
-                cls.output_function(cls.queue.get())
-                time.sleep(cls.delay)
-            except Queue.Empty:
-                pass
+            cls.output_function(cls.queue.get())
+            time.sleep(cls.delay)
 
     @classmethod
     def enqueue(cls, text):
         for line in text.split('\n'):
             cls.queue.put(line)
         cls.start()
+
+    @classmethod
+    def flush(cls):
+        t = threading.Thread(target=cls._flush)
+        t.start()
+
+    @classmethod
+    def _flush(cls):
+        while True:
+            try:
+                cls.queue.get(False)
+            except Queue.Empty:
+                return
 
 
 class RestartException(Exception):
@@ -297,8 +307,4 @@ class BotCommand(object):
         return 'yup'
 
     def _flush(self, args):
-        while True:
-            try:
-                Throttler.queue.get()
-            except Queue.Empty:
-                break
+        Throttler.flush()
