@@ -144,7 +144,7 @@ class BotCommand(object):
     #### DICE
     def _dice(self, args):
         if not args:
-            return None
+            args = ['1d6']
         output = []
         for roll in args:
             roll = roll.lower().replace(' ', '')
