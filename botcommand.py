@@ -9,6 +9,9 @@ import logger
 import auth
 
 
+class RestartException(Exception):
+    pass
+
 class ReloadException(Exception):
     pass
 
@@ -16,16 +19,17 @@ class BotCommand(object):
     r = redis.Redis()
     cmd_prefix = '%'
     cmd_map = {
-        'list'   : '_list',
-        'dice'   : '_dice',
-        'url'    : '_url',
-        'run'    : '_run',
-        'echo'   : '_echo',
-        'sudo'   : '_admin',
-        'login'  : '_login',
-        'reddit' : '_reddit',
-        'reload' : '_reload',
-        'test'   : '_test',
+        'list'    : '_list',
+        'dice'    : '_dice',
+        'url'     : '_url',
+        'run'     : '_run',
+        'echo'    : '_echo',
+        'sudo'    : '_admin',
+        'login'   : '_login',
+        'reddit'  : '_reddit',
+        'reload'  : '_reload',
+        'restart' : '_restart',
+        'test'    : '_test',
     }
 
     def __init__(self, sender, text, callback):
@@ -247,10 +251,17 @@ class BotCommand(object):
         return '\n'.join('{}: {} {}'.format(i + 1, o.string, o.get('href')) for i, o in enumerate(output[:5]))
 
     def _reload(self, args):
-        reload(auth)
-        reload(logger)
-        reload(settings)
-        raise ReloadException
+        if self.session.has_session():
+            reload(auth)
+            reload(logger)
+            reload(settings)
+            raise ReloadException
+        return 'Requires session'
+
+    def _restart(self, args):
+        if self.session.has_session():
+            raise RestartException
+        return 'Requires session'
 
     def _test(self, args):
         return 'yup'

@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 from twisted.words.im import basechat, baseaccount, ircsupport
+import os
+import sys
 import logger
 import settings
 import botcommand
@@ -19,12 +21,16 @@ class MinConversation(basechat.Conversation):
         try:
             bc.run()
         except botcommand.ReloadException:
+            self.sendText('Reloading')
             reload(botcommand)
+        except botcommand.RestartException:
+            self.sendText('Restarting')
+            os.system('sleep 5 && {} &'.format(' '.join(sys.argv)))
+            sys.exit(0)
 
     def contactChangedNick(self, person, newnick):
         logger.log((' -!- ', person.name, ' is now known as ', newnick), (settings.cd['a'], settings.cd['n'], None, settings.cd['n']))
         basechat.Conversation.contactChangedNick(self, person, newnick)
-
 
 class MinGroupConversation(basechat.GroupConversation):
     def show(self):
@@ -56,15 +62,12 @@ class MinGroupConversation(basechat.GroupConversation):
         logger.log(('-!- ', member, ' left ', self.group.name), (settings.cd['a'], settings.cd['n'], None, settings.cd['c']))
         basechat.GroupConversation.memberLeft(self, member)
 
-
 class MinChat(basechat.ChatUI):
     def getGroupConversation(self, group, Class=MinGroupConversation, stayHidden=0):
-        return basechat.ChatUI.getGroupConversation(self, group, Class,
-            stayHidden)
+        return basechat.ChatUI.getGroupConversation(self, group, Class, stayHidden)
 
     def getConversation(self, person, Class=MinConversation, stayHidden=0):
         return basechat.ChatUI.getConversation(self, person, Class, stayHidden)
-
 
 class AccountManager(baseaccount.AccountManager):
     def __init__(self):

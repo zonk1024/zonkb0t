@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import redis
 import logger
 import random
@@ -25,8 +27,11 @@ class SessionManager(object):
 
     @property
     def password(self):
-        password = self.r.get(self.password_key)
-        return password
+        return self.r.get(self.password_key)
+
+    @password.setter
+    def password(self, value):
+        return self.r.set(self.password_key, value)
 
     def challenge(self):
         challenge = self.r.get(self.challenge_key)
@@ -49,9 +54,12 @@ class SessionManager(object):
     def attempt(self, guess):
         answer = self.r.get(self.challenge_key)
         if answer == guess:
-            self.r.setex(self.session_key, 1, self.session_timeout)
-            return self.session_timeout
+            return self.create_session()
         return 0
+
+    def create_session(self):
+        self.r.setex(self.session_key, 1, self.session_timeout)
+        return self.session_timeout
 
     def has_session(self):
         ttl = self.r.ttl(self.session_key)
@@ -64,3 +72,12 @@ class SessionManager(object):
 
     def user_level(self):
         return int(self.r.get(self.user_level_key))
+
+
+if __name__ == '__main__':
+    import sys
+    username = sys.argv[1]
+    sm = SessionManager(username)
+    if len(sys.argv) == 3:
+        sm.password = sys.argv[2]
+    sm.create_session()
