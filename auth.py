@@ -37,6 +37,16 @@ class SessionManager(object):
     def password(self, value):
         return self.r.set(self.password_key, value)
 
+    @property
+    def ouput_limit(self):
+        out = self.UNTRUSTED_LIMIT
+        ul = self.user_level
+        if ul > 0:
+            out = self.UNTRUSTED_LIMIT * 2
+        if ul >= 5:
+            out = 12000
+        return out
+
     def challenge(self):
         challenge = self.r.get(self.challenge_key)
         if challenge:

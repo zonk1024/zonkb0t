@@ -5,6 +5,7 @@ import redis
 import shlex
 import logger
 import random
+import datetime
 import settings
 import threading
 import subprocess
@@ -18,6 +19,7 @@ class Throttler(object):
     queue = Queue.Queue()
     started = False
     thread = None
+    CHUNK_SIZE = 120
 
     @classmethod
     def start(cls):
@@ -33,9 +35,11 @@ class Throttler(object):
             time.sleep(cls.delay)
 
     @classmethod
-    def enqueue(cls, text):
+    def enqueue(cls, text, user_session):
+        #text = text[:user_session.output_limit]
         for line in text.split('\n'):
-            cls.queue.put(line)
+            for chunk in cls.n_at_a_time(line, cls.CHUNK_SIZE):
+                cls.queue.put(chunk)
         cls.start()
 
     @classmethod
@@ -51,6 +55,28 @@ class Throttler(object):
             except Queue.Empty:
                 return
 
+    @staticmethod
+    def n_at_a_time(iterable, n, to_type=None):
+        if to_type is None:
+            to_type = type(iterable)
+        iterator = iter(iterable)
+        while True:
+            out = to_type()
+            for _ in xrange(n):
+                try:
+                    if to_type is list:
+                        out.append(iterator.next())
+                    else:
+                        out += iterator.next()
+                except StopIteration:
+                    break
+            if len(out) == n:
+                yield out
+            elif out:
+                yield out
+                break
+            else:
+                break
 
 class RestartException(Exception):
     pass
@@ -62,6 +88,7 @@ class BotCommand(object):
     r = redis.Redis()
     cmd_prefix = '%'
     cmd_map = {
+        'help'    : '_help',
         'list'    : '_list',
         'dice'    : '_dice',
         'url'     : '_url',
@@ -110,11 +137,19 @@ class BotCommand(object):
             output = getattr(self, self.cmd_map[cmd_name])(self.args)
             if output is not None:
                 logger.log(('-!- COMMAND OUTPUT -!- ', ': ', output), (settings.cd['a'], None, settings.cd['cm']))
-                Throttler.enqueue(str(output))
+                Throttler.enqueue(str(output), user_session=self.session)
             else:
                 logger.log(('-!- COMMAND FAILED -!- ',), (settings.cd['a'],))
         else:
             logger.log(('-!- UNREGISTERED COMMAND -!- ', ': ', cmd_name), (settings.cd['e'], None, settings.cd['cm']))
+
+    #### HELP
+    def _help(self, args):
+        if not args:
+            return 'Usage: `{}help [command]`\nCommands: {}'.format(self.cmd_prefix, ' '.join(self.cmd_map.keys()))
+        if args[0] in self.cmd_map:
+            return getattr(self, self.cmd_map[args[0]]).__doc__
+        return 'Command not found'
 
     #### ADMIN
     @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
@@ -130,6 +165,7 @@ class BotCommand(object):
 
     #### LIST
     def _list(self, args):
+        """Usage: `%list [add|show|random|del] list_name`"""
         output = ""
         list_map = {
             'add'    : '_list_add',
@@ -152,7 +188,7 @@ class BotCommand(object):
         name = args.pop(0)
         did = False
         for arg in args:
-            did = self.r.lpush('{}{}{}'.format(settings.redis_prefix, 'list:', name), arg)
+            did = self.r.lpush(self._list_keyname(name))
         return str(did)
 
     def _list_show(self, args):
@@ -160,7 +196,7 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            output.extend(self.r.lrange('{}{}{}'.format(settings.redis_prefix, 'list:', name), 0, -1)[::-1])
+            output.extend(self.r.lrange(self._list_keyname(name))[::-1])
         return str(output)
 
     def _list_random(self, args):
@@ -168,7 +204,7 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            choose_from = self.r.lrange('{}{}{}'.format(settings.redis_prefix, 'list:', name), 0, -1)
+            choose_from = self.r.lrange(self._list_keyname(name))
             output.append(choose_from[random.randint(0, len(choose_from) - 1)])
         if len(output) == 1:
             return str(output[0])
@@ -179,10 +215,13 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            output.append(self.r.delete('{}{}{}'.format(settings.redis_prefix, 'list:', name)))
+            output.append(self.r.delete(self._list_keyname(name), 'list:', name))
         if len(output) == 1:
             return str(output[0])
         return str(output)
+
+    def _list_keyname(self, name):
+        return '{}{}{}'.format(settings.redis_prefix, 'list:', name)
 
     #### DICE
     def _dice(self, args):
@@ -303,8 +342,10 @@ class BotCommand(object):
     def _restart(self, args):
         raise RestartException
 
+    #### TEST
     def _test(self, args):
-        return 'yup'
+        return 'working'
 
+    #### FLUSH
     def _flush(self, args):
         Throttler.flush()
