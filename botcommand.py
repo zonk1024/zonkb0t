@@ -23,12 +23,12 @@ class UsageTracker(object):
     MONTH = DAY * 30
     YEAR = DAY * 365
     REDIS_SEG = 'usage'
+    WINDOW = MONTH
 
     r = redis.Redis()
 
-    def __init__(self, username, window=WEEK):
+    def __init__(self, username):
         self.username = username
-        self.window = window
 
     @property
     def key(self):
@@ -37,7 +37,7 @@ class UsageTracker(object):
     def update(self, value):
         t = int(time.time())
         self.r.zadd(self.key, value, t)
-        self.r.zremrangebyscore(self.key, -1, t - self.window)
+        self.r.zremrangebyscore(self.key, -1, t - self.WINDOW)
 
     def sum_range(self, window):
         t = int(time.time())
@@ -173,11 +173,17 @@ class BotCommand(object):
         self.args = None
         self.throttler = Throttler(username, groupname, output_function)
         if self.text and self.text[0] == self.CMD_PREFIX:
-            logger.log(('-!- COMMAND FROM -!- ', ': ', username), (settings.cd['a'], None, settings.cd['n']))
+            logger.log(
+                ('-!- COMMAND FROM -!- ', ': ', username),
+                (settings.cd['a'], None, settings.cd['n']),
+            )
             try:
                 self.args = self.parse(text)
             except ValueError:
-                logger.log(('-!- ERROR PARSING COMMAND -!- ', ': ', text), (settings.cd['e'], None, settings.cd['e']))
+                logger.log(
+                    ('-!- ERROR PARSING COMMAND -!- ', ': ', text),
+                    (settings.cd['e'], None, settings.cd['e']),
+                )
                 self.args = []
 
     def parse(self, text):
@@ -199,12 +205,21 @@ class BotCommand(object):
         if cmd_name in self.cmd_map and hasattr(self, self.cmd_map[cmd_name]):
             output = getattr(self, self.cmd_map[cmd_name])(self.args)
             if output is not None:
-                logger.log(('-!- COMMAND OUTPUT -!- ', ': ', output), (settings.cd['a'], None, settings.cd['cm']))
+                logger.log(
+                    ('-!- COMMAND OUTPUT -!- ', ': ', output),
+                    (settings.cd['a'], None, settings.cd['cm']),
+                )
                 self.throttler.enqueue(str(output))
             else:
-                logger.log(('-!- COMMAND FAILED -!- ',), (settings.cd['a'],))
+                logger.log(
+                    ('-!- COMMAND FAILED -!- ',),
+                    (settings.cd['a'],),
+                )
         else:
-            logger.log(('-!- UNREGISTERED COMMAND -!- ', ': ', cmd_name), (settings.cd['e'], None, settings.cd['cm']))
+            logger.log(
+                ('-!- UNREGISTERED COMMAND -!- ', ': ', cmd_name),
+                (settings.cd['e'], None, settings.cd['cm']),
+            )
 
     #### HELP
     def _help(self, args):
