@@ -3,6 +3,7 @@
 from twisted.words.im import basechat, baseaccount, ircsupport
 import os
 import sys
+import auth
 import logger
 import settings
 import botcommand
@@ -22,14 +23,12 @@ class MinConversation(basechat.Conversation):
             bc.run()
         except botcommand.ReloadException:
             self.sendText('Reloading')
+            reload(auth)
             reload(botcommand)
-        except botcommand.RestartException:
-            self.sendText('Restarting')
-            os.system('sleep 5 && {} &'.format(' '.join(sys.argv)))
-            sys.exit(0)
 
     def contactChangedNick(self, person, newnick):
         logger.log((' -!- ', person.name, ' is now known as ', newnick), (settings.cd['a'], settings.cd['n'], None, settings.cd['n']))
+        auth.SessionManager(person.name).destroy_session()
         basechat.Conversation.contactChangedNick(self, person, newnick)
 
 class MinGroupConversation(basechat.GroupConversation):
@@ -56,10 +55,12 @@ class MinGroupConversation(basechat.GroupConversation):
 
     def memberChangedNick(self, oldnick, newnick):
         logger.log(('-!- ', oldnick, ' in ', self.group.name, ' is now known as ', newnick), (settings.cd['a'], settings.cd['n'], None, settings.cd['c'], None, settings.cd['n']))
+        auth.SessionManager(oldnick).destroy_session()
         basechat.GroupConversation.memberChangedNick(self, oldnick, newnick)
 
     def memberLeft(self, member):
         logger.log(('-!- ', member, ' left ', self.group.name), (settings.cd['a'], settings.cd['n'], None, settings.cd['c']))
+        auth.SessionManager(member).destroy_session()
         basechat.GroupConversation.memberLeft(self, member)
 
 class MinChat(basechat.ChatUI):
@@ -82,4 +83,5 @@ class AccountManager(baseaccount.AccountManager):
 if __name__ == "__main__":
     from twisted.internet import reactor
     AccountManager()
+    started = False
     reactor.run()

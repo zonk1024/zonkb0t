@@ -13,6 +13,51 @@ import urlgrabber
 import BeautifulSoup
 
 
+class UsageTracker(object):
+    SECOND = 1
+    MINUTE = SECOND * 60
+    HOUR = MINUTE * 60
+    DAY = HOUR * 24
+    WEEK = DAY * 7
+    MONTH = DAY * 30
+    YEAR = DAY * 365
+
+    redis_seg = 'usage'
+    r = redis.Redis()
+
+    def __init__(self, username, window=WEEK):
+        self.username = username
+        self.window = window
+
+    @property
+    def key(self):
+        return '{}:{}:{}'.format(settings.redis_prefix, self.redis_seg, self.username)
+
+    def update(self, value):
+        t = int(time.time())
+        self.r.zadd(self.key, value, t)
+        self.r.zremrangebyscore(self.key, -1, t - self.window)
+
+    def sum_range(self, window):
+        t = int(time.time())
+        return sum([int(v) for v in self.r.zrangebyscore(self.key, t - window, t)])
+
+    @property
+    def usage(self):
+        return 'Command output of {}: Minute:{}  Hour:{}  Day:{}  Week:{}  Month:{}'.format(
+            self.username,
+            self.sum_range(self.MINUTE),
+            self.sum_range(self.HOUR),
+            self.sum_range(self.DAY),
+            self.sum_range(self.WEEK),
+            self.sum_range(self.MONTH),
+        )
+
+    @classmethod
+    def get_usage(cls, username):
+        return cls(username).usage
+
+
 class Throttler(object):
     delay = .5
     output_function = None
@@ -37,6 +82,7 @@ class Throttler(object):
     @classmethod
     def enqueue(cls, text, user_session):
         #text = text[:user_session.output_limit]
+        UsageTracker(user_session.username).update(len(text))
         for line in text.split('\n'):
             for chunk in cls.n_at_a_time(line, cls.CHUNK_SIZE):
                 cls.queue.put(chunk)
@@ -78,9 +124,6 @@ class Throttler(object):
             else:
                 break
 
-class RestartException(Exception):
-    pass
-
 class ReloadException(Exception):
     pass
 
@@ -101,6 +144,7 @@ class BotCommand(object):
         'restart' : '_restart',
         'test'    : '_test',
         'flush'   : '_flush',
+        'usage'   : '_usage',
     }
 
     def __init__(self, sender, text, callback):
@@ -148,12 +192,13 @@ class BotCommand(object):
         if not args:
             return 'Usage: `{}help [command]`\nCommands: {}'.format(self.cmd_prefix, ' '.join(self.cmd_map.keys()))
         if args[0] in self.cmd_map:
-            return getattr(self, self.cmd_map[args[0]]).__doc__
+            return getattr(self, self.cmd_map[args[0]]).__doc__.format(cmd_prefix=self.cmd_prefix)
         return 'Command not found'
 
     #### ADMIN
     @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _admin(self, args):
+        """Usage: `{cmd_prefix}sudo <alias> <target_function>`"""
         if not args:
             return None
         if len(args) == 3 and args[0] == 'add':
@@ -165,7 +210,7 @@ class BotCommand(object):
 
     #### LIST
     def _list(self, args):
-        """Usage: `%list [add|show|random|del] list_name`"""
+        """Usage: `{cmd_prefix}list [add|show|random|del] list_name`"""
         output = ""
         list_map = {
             'add'    : '_list_add',
@@ -188,7 +233,7 @@ class BotCommand(object):
         name = args.pop(0)
         did = False
         for arg in args:
-            did = self.r.lpush(self._list_keyname(name))
+            did = self.r.lpush(self._list_key(name))
         return str(did)
 
     def _list_show(self, args):
@@ -196,7 +241,7 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            output.extend(self.r.lrange(self._list_keyname(name))[::-1])
+            output.extend(self.r.lrange(self._list_key(name))[::-1])
         return str(output)
 
     def _list_random(self, args):
@@ -204,7 +249,7 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            choose_from = self.r.lrange(self._list_keyname(name))
+            choose_from = self.r.lrange(self._list_key(name))
             output.append(choose_from[random.randint(0, len(choose_from) - 1)])
         if len(output) == 1:
             return str(output[0])
@@ -215,16 +260,17 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            output.append(self.r.delete(self._list_keyname(name), 'list:', name))
+            output.append(self.r.delete(self._list_key(name)))
         if len(output) == 1:
             return str(output[0])
         return str(output)
 
-    def _list_keyname(self, name):
-        return '{}{}{}'.format(settings.redis_prefix, 'list:', name)
+    def _list_key(self, name):
+        return '{}:{}:{}'.format(settings.redis_prefix, 'list', name)
 
     #### DICE
     def _dice(self, args):
+        """Usage: `{cmd_prefix}dice *args` with args in the form of (number)[dD](sides) -- 1D6 is default"""
         if not args:
             args = ['1d6']
         output = []
@@ -260,6 +306,7 @@ class BotCommand(object):
     #### RUN
     @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _run(self, args):
+        """Usage: `{cmd_prefix}run cmd`"""
         if not args:
             return None
         try:
@@ -269,6 +316,7 @@ class BotCommand(object):
 
     #### URL
     def _url(self, args):
+        """Usage: `{cmd_prefix}url *urls`"""
         if not args:
             return None
         output = []
@@ -281,10 +329,12 @@ class BotCommand(object):
 
     #### ECHO
     def _echo(self, args):
+        """Usage: `{cmd_prefix}echo text`"""
         return self.text.lstrip(self.cmd_prefix).lstrip(' ').lstrip('echo').lstrip(' ')
 
     #### LOGIN
     def _login(self, args):
+        """Usage: `{cmd_prefix}login [challenge_response]`"""
         ttl = self.session.has_session()
         c_ttl = self.session.challenge_ttl()
         if ttl:
@@ -318,7 +368,9 @@ class BotCommand(object):
         else:
             return 'Attempt failed. Challenge ttl is {} seconds.'.format(self.session.challenge_ttl())
 
+    #### REDIT
     def _reddit(self, args):
+        """Usage: `{cmd_prefix}reddit [*subreddits]`"""
         output = []
         args = args if args else ['']
         for arg in args:
@@ -331,21 +383,34 @@ class BotCommand(object):
             output.extend(bs.findAll('a', 'title'))
         return '\n'.join('{}: {} {}'.format(i + 1, o.string, o.get('href')) for i, o in enumerate(output[:5]))
 
+    #### RELOAD
     @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _reload(self, args):
+        """Usage: `{cmd_prefix}reload`"""
         reload(auth)
         reload(logger)
         reload(settings)
         raise ReloadException
 
+    #### RESTART
     @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
     def _restart(self, args):
+        """Usage: `{cmd_prefix}restart`"""
         raise RestartException
 
     #### TEST
     def _test(self, args):
+        """Usage: `{cmd_prefix}test`"""
         return 'working'
 
     #### FLUSH
     def _flush(self, args):
+        """Usage: `{cmd_prefix}flush`"""
         Throttler.flush()
+
+    #### USAGE
+    def _usage(self, args):
+        output = []
+        for arg in args:
+            output.append(UsageTracker.get_usage(arg))
+        return '\n'.join(output)

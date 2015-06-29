@@ -9,17 +9,17 @@ import settings
 
 class SessionManager(object):
     r = redis.Redis()
-    redis_seg = 'auth:'
+    redis_seg = 'auth'
     challenge_timeout = 90
     session_timeout = 3600
     GOD_USER = 10
     TRUSTED_USER = 5
     BASIC_USER = 1
 
-    def __init__(self, user):
-        self.user = user
-        template_key = '{a}{b}{}:{c}'
-        template_dict = {'a': settings.redis_prefix, 'b': self.redis_seg, 'c': self.user}
+    def __init__(self, username):
+        self.username = username
+        template_key = '{a}:{b}:{}:{c}'
+        template_dict = {'a': settings.redis_prefix, 'b': self.redis_seg, 'c': self.username}
         #botname:auth:password:username
         self.password_key = template_key.format('password', **template_dict)
         #botname:auth:session:username
@@ -99,6 +99,8 @@ def requires_login(user_level=SessionManager.TRUSTED_USER):
             if args[0].session.has_session() and args[0].session.user_level >= user_level:
                 return func(*args, **kwargs)
             return 'Requires login, and user_level {}'.format(user_level)
+        wrapper.__name__ = func.__name__
+        wrapper.__doc__ = func.__doc__
         return wrapper
     return decorator
 
