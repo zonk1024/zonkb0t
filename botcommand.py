@@ -1,4 +1,5 @@
 import auth
+import json
 import time
 import Queue
 import redis
@@ -130,20 +131,22 @@ class BotCommand(object):
     r = redis.Redis()
     cmd_prefix = '%'
     cmd_map = {
-        'help'    : '_help',
-        'list'    : '_list',
-        'dice'    : '_dice',
-        'url'     : '_url',
-        'run'     : '_run',
-        'echo'    : '_echo',
-        'sudo'    : '_admin',
-        'login'   : '_login',
-        'reddit'  : '_reddit',
-        'reload'  : '_reload',
-        'restart' : '_restart',
-        'test'    : '_test',
-        'flush'   : '_flush',
-        'usage'   : '_usage',
+        'dice'        : '_dice',
+        'echo'        : '_echo',
+        'flush'       : '_flush',
+        'help'        : '_help',
+        'list'        : '_list',
+        'login'       : '_login',
+        'reddit'      : '_reddit',
+        'reload'      : '_reload',
+        'restart'     : '_restart',
+        'run'         : '_run',
+        'sudo'        : '_admin',
+        'test'        : '_test',
+        'url'         : '_url',
+        'usage'       : '_usage',
+        'weather'     : '_weather',
+        'weather_raw' : '_weather_raw',
     }
 
     def __init__(self, username, text, callback):
@@ -416,3 +419,34 @@ class BotCommand(object):
         for arg in args:
             output.append(UsageTracker.get_usage(arg))
         return '\n'.join(output)
+
+    #### WEATHER
+    def _weather(self, args, raw=False):
+        """Usage: `{cmd_prefix}weather *zip_codes`"""
+        url = 'http://api.openweathermap.org/data/2.5/weather?zip={},us'
+        if not args:
+            args = ['92618']
+        output = []
+        for zip_code in args:
+            resp = urlgrabber.urlread(url.format(zip_code), size=2097152*10)
+            if raw:
+                output.append(resp)
+            else:
+                json_data = json.loads(resp)
+                output.append(
+                    'Current weather for {city}: {desc}, low:{low:.1f} high:{cur:.1f} currently:{high:.1f}'.format(
+                        city=json_data['name'],
+                        desc=json_data['weather'][0]['description'],
+                        low=self._weather_convert(json_data['main']['temp_min']),
+                        cur=self._weather_convert(json_data['main']['temp']),
+                        high=self._weather_convert(json_data['main']['temp_max']),
+                    )
+                )
+        return '\n'.join(output)
+
+    def _weather_convert(self, value):
+        return (value - 273.15) * 1.8 + 32
+
+    def _weather_raw(self, args):
+        """Usage: `{cmd_prefix}weather_raw *zip_codes`"""
+        return self._weather(args, raw=True)
