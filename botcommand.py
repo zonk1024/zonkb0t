@@ -409,6 +409,7 @@ class BotCommand(object):
 
     #### USAGE
     def _usage(self, args):
+        """Usage: `{cmd_prefix}usage [*username]`"""
         output = []
         if not args:
             args = [self.username]
