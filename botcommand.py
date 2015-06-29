@@ -6,11 +6,11 @@ import redis
 import shlex
 import logger
 import random
-import datetime
 import settings
 import threading
 import subprocess
 import urlgrabber
+import collections
 import BeautifulSoup
 
 
@@ -22,8 +22,8 @@ class UsageTracker(object):
     WEEK = DAY * 7
     MONTH = DAY * 30
     YEAR = DAY * 365
+    REDIS_SEG = 'usage'
 
-    redis_seg = 'usage'
     r = redis.Redis()
 
     def __init__(self, username, window=WEEK):
@@ -32,7 +32,7 @@ class UsageTracker(object):
 
     @property
     def key(self):
-        return '{}:{}:{}'.format(settings.redis_prefix, self.redis_seg, self.username)
+        return '{}:{}:{}'.format(settings.redis_prefix, self.REDIS_SEG, self.username)
 
     def update(self, value):
         t = int(time.time())
@@ -59,46 +59,58 @@ class UsageTracker(object):
         return cls(username).usage
 
 class Throttler(object):
-    delay = .5
-    output_function = None
-    queue = Queue.Queue()
-    started = False
-    thread = None
+    DELAY = .5
     CHUNK_SIZE = 120
 
-    @classmethod
-    def start(cls):
-        if not cls.started:
-            cls.started = True
-            cls.thread = threading.Thread(target=cls.worker)
-            cls.thread.start()
+    threads = collections.defaultdict(dict)
 
-    @classmethod
-    def worker(cls):
-        while True:
-            cls.output_function(cls.queue.get())
-            time.sleep(cls.delay)
+    def __init__(self, username, groupname, output_function):
+        self.username = username
+        self.groupname = groupname
+        self.output_function = output_function
 
-    @classmethod
-    def enqueue(cls, text, user_session):
-        #text = text[:user_session.output_limit]
-        UsageTracker(user_session.username).update(len(text))
-        for line in text.split('\n'):
-            for chunk in cls.n_at_a_time(line, cls.CHUNK_SIZE):
-                cls.queue.put(chunk)
-        cls.start()
+    @property
+    def key(self):
+        return self.groupname if self.groupname else self.username
 
-    @classmethod
-    def flush(cls):
-        t = threading.Thread(target=cls._flush)
-        t.start()
+    def start(self):
+        if not self.threads[self.key].get('started'):
+            self.threads[self.key]['started'] = True
+            thread = threading.Thread(target=self.worker)
+            thread.daemon = True
+            thread.start()
+            self.threads[self.key]['thread'] = thread
 
-    @classmethod
-    def _flush(cls):
+    def worker(self):
         while True:
             try:
-                cls.queue.get(False)
+                output_function, chunk = self.threads[self.key]['queue'].get(block=False)
+                output_function(chunk)
+                time.sleep(self.DELAY)
             except Queue.Empty:
+                self.threads[self.key]['started'] = False
+                return
+
+    def enqueue(self, text):
+        # text = text[:user_session.output_limit]
+        UsageTracker(self.username).update(len(text))
+        if 'queue' not in self.threads[self.key]:
+            self.threads[self.key]['queue'] = Queue.Queue()
+        for line in text.split('\n'):
+            for chunk in self.n_at_a_time(line, self.CHUNK_SIZE):
+                self.threads[self.key]['queue'].put((self.output_function, chunk))
+        self.start()
+
+    def flush(self):
+        t = threading.Thread(target=self._flush)
+        t.daemon = True
+        t.start()
+
+    def _flush(self):
+        while True:
+            try:
+                self.threads[self.key]['queue'].get(block=False)
+            except (Queue.Empty, KeyError):
                 return
 
     @staticmethod
@@ -127,9 +139,12 @@ class Throttler(object):
 class ReloadException(Exception):
     pass
 
+class RestartException(Exception):
+    pass
+
 class BotCommand(object):
-    r = redis.Redis()
-    cmd_prefix = '%'
+    CMD_PREFIX = '%'
+
     cmd_map = {
         'dice'        : '_dice',
         'echo'        : '_echo',
@@ -148,42 +163,45 @@ class BotCommand(object):
         'weather'     : '_weather',
         'weather_raw' : '_weather_raw',
     }
+    r = redis.Redis()
 
-    def __init__(self, username, text, callback):
+    def __init__(self, username, text, output_function, groupname=None):
         self.username = username
+        self.output_function = output_function
+        self.groupname = groupname
         self.session = auth.SessionManager(username)
         self.text = text
-        Throttler.output_function = callback
         self.args = None
-        if self.text and self.text[0] == self.cmd_prefix:
+        self.throttler = Throttler(username, groupname, output_function)
+        if self.text and self.text[0] == self.CMD_PREFIX:
             logger.log(('-!- COMMAND FROM -!- ', ': ', username), (settings.cd['a'], None, settings.cd['n']))
             try:
                 self.args = self.parse(text)
-            except ValueError as e:
+            except ValueError:
                 logger.log(('-!- ERROR PARSING COMMAND -!- ', ': ', text), (settings.cd['e'], None, settings.cd['e']))
                 self.args = []
 
     def parse(self, text):
         args = shlex.split(text)
-        if not args or (len(args) > 1 and not args[0].startswith(self.cmd_prefix)):
+        if not args or (len(args) > 1 and not args[0].startswith(self.CMD_PREFIX)):
             return []
         return args
 
     def run(self):
         if not self.args:
             return None
-        if len(self.args[0]) == len(self.cmd_prefix):
+        if len(self.args[0]) == len(self.CMD_PREFIX):
             # so they can do ! cmd or !cmd
             self.args.pop(0)
         else:
             # trim
-            self.args[0] = self.args[0].lstrip(self.cmd_prefix)
+            self.args[0] = self.args[0].lstrip(self.CMD_PREFIX)
         cmd_name = self.args.pop(0)
         if cmd_name in self.cmd_map and hasattr(self, self.cmd_map[cmd_name]):
             output = getattr(self, self.cmd_map[cmd_name])(self.args)
             if output is not None:
                 logger.log(('-!- COMMAND OUTPUT -!- ', ': ', output), (settings.cd['a'], None, settings.cd['cm']))
-                Throttler.enqueue(str(output), user_session=self.session)
+                self.throttler.enqueue(str(output))
             else:
                 logger.log(('-!- COMMAND FAILED -!- ',), (settings.cd['a'],))
         else:
@@ -192,9 +210,9 @@ class BotCommand(object):
     #### HELP
     def _help(self, args):
         if not args:
-            return 'Usage: `{}help [command]`\nCommands: {}'.format(self.cmd_prefix, ' '.join(self.cmd_map.keys()))
+            return 'Usage: `{}help [command]`\nCommands: {}'.format(self.CMD_PREFIX, ' '.join(self.cmd_map.keys()))
         if args[0] in self.cmd_map:
-            return getattr(self, self.cmd_map[args[0]]).__doc__.format(cmd_prefix=self.cmd_prefix)
+            return getattr(self, self.cmd_map[args[0]]).__doc__.format(cmd_prefix=self.CMD_PREFIX)
         return 'Command not found'
 
     #### ADMIN
@@ -313,7 +331,7 @@ class BotCommand(object):
             return None
         try:
             return subprocess.check_output(args)
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             return 'Command exited with error.'
 
     #### URL
@@ -332,7 +350,7 @@ class BotCommand(object):
     #### ECHO
     def _echo(self, args):
         """Usage: `{cmd_prefix}echo text`"""
-        return self.text.lstrip(self.cmd_prefix).lstrip(' ').lstrip('echo').lstrip(' ')
+        return self.text.lstrip(self.CMD_PREFIX).lstrip(' ').lstrip('echo').lstrip(' ')
 
     #### LOGIN
     def _login(self, args):
@@ -408,7 +426,7 @@ class BotCommand(object):
     #### FLUSH
     def _flush(self, args):
         """Usage: `{cmd_prefix}flush`"""
-        Throttler.flush()
+        self.throttler.flush()
 
     #### USAGE
     def _usage(self, args):
@@ -443,7 +461,7 @@ class BotCommand(object):
             except urlgrabber.grabber.URLGrabError:
                 resp = 'Failed to fetch weather for {}'.format(repr(city))
         if raw:
-            return output.append(resp)
+            return resp
         try:
             json_data = json.loads(resp)
             return 'Current weather for {city}: {desc}, low:{low:.1f} high:{cur:.1f} currently:{high:.1f}'.format(

@@ -8,26 +8,42 @@ import settings
 
 
 class SessionManager(object):
-    r = redis.Redis()
-    redis_seg = 'auth'
-    challenge_timeout = 90
-    session_timeout = 3600
+    REDIS_SEG = 'auth'
+    CHALLENGE_TIMEOUT = 90
+    SESSION_TIMEOUT = 3600
     GOD_USER = 10
     TRUSTED_USER = 5
     BASIC_USER = 1
+    KEY_TEMPLATE = '{prefix}:{class_seg}:{child_type}:{username}'
+
+    r = redis.Redis()
 
     def __init__(self, username):
         self.username = username
-        template_key = '{a}:{b}:{}:{c}'
-        template_dict = {'a': settings.redis_prefix, 'b': self.redis_seg, 'c': self.username}
-        #botname:auth:password:username
-        self.password_key = template_key.format('password', **template_dict)
-        #botname:auth:session:username
-        self.session_key = template_key.format('session', **template_dict)
-        #botname:auth:challenge:username
-        self.challenge_key = template_key.format('challenge', **template_dict)
-        #botname:auth:user_level:username
-        self.user_level_key = template_key.format('user_level', **template_dict)
+
+    def key(self, child_type):
+        return self.KEY_TEMPLATE.format(
+            prefix=settings.redis_prefix,
+            class_seg=self.REDIS_SEG,
+            child_type=child_type,
+            username=self.username,
+        )
+
+    @property
+    def password_key(self):
+        return self.key('password')
+
+    @property
+    def session_key(self):
+        return self.key('session')
+
+    @property
+    def challenge_key(self):
+        return self.key('challenge')
+
+    @property
+    def user_level_key(self):
+        return self.key('user_level')
 
     @property
     def password(self):
@@ -56,7 +72,7 @@ class SessionManager(object):
             answer = None
         else:
             answer = hashlib.md5('{}{}\n'.format(challenge, self.password)).hexdigest()
-        self.r.setex(self.challenge_key, answer, self.challenge_timeout)
+        self.r.setex(self.challenge_key, answer, self.CHALLENGE_TIMEOUT)
         return challenge
 
     def challenge_ttl(self):
@@ -72,8 +88,8 @@ class SessionManager(object):
         return 0
 
     def create_session(self):
-        self.r.setex(self.session_key, 1, self.session_timeout)
-        return self.session_timeout
+        self.r.setex(self.session_key, 1, self.SESSION_TIMEOUT)
+        return self.SESSION_TIMEOUT
 
     def has_session(self):
         ttl = self.r.ttl(self.session_key)
@@ -91,7 +107,6 @@ class SessionManager(object):
     @user_level.setter
     def user_level(self, value):
         self.r.set(self.user_level_key, value)
-
 
 def requires_login(user_level=SessionManager.TRUSTED_USER):
     def decorator(func):

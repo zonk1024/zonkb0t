@@ -11,7 +11,8 @@ accounts = [
 ]
 
 redis_prefix = 'DefaultBot:'
-#log_file = '/var/log/zonkb0t.log'
+#log_file = '~/log/zonkb0t.log'
+file_logging = False
 
 cd = {
     'a' : ['red',     {'attrs':['bold']} ],

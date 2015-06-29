@@ -12,9 +12,7 @@ LOG_FILE = getattr(
     'log_file',
     os.path.join(LOG_DIR, '{}.log'.format(settings.redis_prefix)),
 )
-if 'log' not in os.listdir(os.getenv('HOME')):
-    os.makedirs(LOG_DIR)
-LOG_FILE_OBJ = open(LOG_FILE, 'a')
+LOG_FILE_OBJ = None
 
 def close_log_file():
     LOG_FILE_OBJ.close()
@@ -37,7 +35,12 @@ def log(strings, colors):
             out += s
             out_simple += s
     print out
-    LOG_FILE_OBJ.write('{}\n'.format(out_simple))
-    LOG_FILE_OBJ.flush()
+    if LOG_FILE_OBJ:
+        LOG_FILE_OBJ.write('{}\n'.format(out_simple))
+        LOG_FILE_OBJ.flush()
 
-atexit.register(close_log_file)
+if getattr(settings, 'file_logging', False):
+    if 'log' not in os.listdir(os.getenv('HOME')):
+        os.makedirs(LOG_DIR)
+    LOG_FILE_OBJ = open(LOG_FILE, 'a')
+    atexit.register(close_log_file)
