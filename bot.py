@@ -35,6 +35,7 @@ class MinConversation(basechat.Conversation):
         auth.SessionManager(person.name).destroy_session()
         basechat.Conversation.contactChangedNick(self, person, newnick)
 
+
 class MinGroupConversation(basechat.GroupConversation):
     def show(self):
         pass
@@ -82,12 +83,14 @@ class MinGroupConversation(basechat.GroupConversation):
         auth.SessionManager(member).destroy_session()
         basechat.GroupConversation.memberLeft(self, member)
 
+
 class MinChat(basechat.ChatUI):
     def getGroupConversation(self, group, Class=MinGroupConversation, stayHidden=0):
         return basechat.ChatUI.getGroupConversation(self, group, Class, stayHidden)
 
     def getConversation(self, person, Class=MinConversation, stayHidden=0):
         return basechat.ChatUI.getConversation(self, person, Class, stayHidden)
+
 
 class AccountManager(baseaccount.AccountManager):
     def __init__(self):

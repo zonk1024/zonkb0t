@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import redis
-import logger
 import random
 import hashlib
 import settings
@@ -108,6 +107,7 @@ class SessionManager(object):
     def user_level(self, value):
         self.r.set(self.user_level_key, value)
 
+
 def requires_login(user_level=SessionManager.TRUSTED_USER):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -118,7 +118,6 @@ def requires_login(user_level=SessionManager.TRUSTED_USER):
         wrapper.__doc__ = func.__doc__
         return wrapper
     return decorator
-
 
 if __name__ == '__main__':
     import sys

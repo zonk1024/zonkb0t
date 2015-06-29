@@ -58,6 +58,7 @@ class UsageTracker(object):
     def get_usage(cls, username):
         return cls(username).usage
 
+
 class Throttler(object):
     DELAY = .5
     CHUNK_SIZE = 120
@@ -136,11 +137,10 @@ class Throttler(object):
             else:
                 break
 
+
 class ReloadException(Exception):
     pass
 
-class RestartException(Exception):
-    pass
 
 class BotCommand(object):
     CMD_PREFIX = '%'
@@ -154,7 +154,6 @@ class BotCommand(object):
         'login'       : '_login',
         'reddit'      : '_reddit',
         'reload'      : '_reload',
-        'restart'     : '_restart',
         'run'         : '_run',
         'sudo'        : '_admin',
         'test'        : '_test',
@@ -414,12 +413,6 @@ class BotCommand(object):
         reload(logger)
         reload(settings)
         raise ReloadException
-
-    #### RESTART
-    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
-    def _restart(self, args):
-        """Usage: `{cmd_prefix}restart`"""
-        raise RestartException
 
     #### TEST
     def _test(self, args):

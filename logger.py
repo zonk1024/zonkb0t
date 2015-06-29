@@ -14,8 +14,10 @@ LOG_FILE = getattr(
 )
 LOG_FILE_OBJ = None
 
+
 def close_log_file():
     LOG_FILE_OBJ.close()
+
 
 def log(strings, colors):
     t = time.strftime('%Y-%m-%d %H:%M:%S')
