@@ -423,26 +423,49 @@ class BotCommand(object):
     #### WEATHER
     def _weather(self, args, raw=False):
         """Usage: `{cmd_prefix}weather *zip_codes`"""
-        url = 'http://api.openweathermap.org/data/2.5/weather?zip={},us'
         if not args:
             args = ['92618']
         output = []
-        for zip_code in args:
-            resp = urlgrabber.urlread(url.format(zip_code), size=2097152*10)
-            if raw:
-                output.append(resp)
-            else:
-                json_data = json.loads(resp)
-                output.append(
-                    'Current weather for {city}: {desc}, low:{low:.1f} high:{cur:.1f} currently:{high:.1f}'.format(
-                        city=json_data['name'],
-                        desc=json_data['weather'][0]['description'],
-                        low=self._weather_convert(json_data['main']['temp_min']),
-                        cur=self._weather_convert(json_data['main']['temp']),
-                        high=self._weather_convert(json_data['main']['temp_max']),
-                    )
-                )
+        for city in args:
+            output.append(self._weather_get(city, raw=raw))
         return '\n'.join(output)
+
+    def _weather_get(self, city, raw=False):
+        url = 'http://api.openweathermap.org/data/2.5/weather?{}={}'
+        if all(c in '0123456789' for c in city):
+            try:
+                resp = urlgrabber.urlread(url.format('zip', city), size=2097152*10)
+            except urlgrabber.grabber.URLGrabError:
+                resp = 'Failed to fetch weather for {}'.format(repr(city))
+        else:
+            try:
+                resp = urlgrabber.urlread(url.format('q', self._weather_parse_city(city)), size=2097152*10)
+            except urlgrabber.grabber.URLGrabError:
+                resp = 'Failed to fetch weather for {}'.format(repr(city))
+        if raw:
+            return output.append(resp)
+        try:
+            json_data = json.loads(resp)
+            return 'Current weather for {city}: {desc}, low:{low:.1f} high:{cur:.1f} currently:{high:.1f}'.format(
+                city=json_data['name'],
+                desc=json_data['weather'][0]['description'],
+                low=self._weather_convert(json_data['main']['temp_min']),
+                cur=self._weather_convert(json_data['main']['temp']),
+                high=self._weather_convert(json_data['main']['temp_max']),
+            )
+        except (KeyError, ValueError):
+            return 'API error for {}: {}'.format(repr(city), resp)
+
+    def _weather_parse_city(self, value):
+        city = value
+        state = ''
+        country = 'us'
+        if city.count(',') == 2:
+            city, state, country = value.split(',')
+            country = '{}'.format(country)
+        elif city.count(',') == 1:
+            city, state = value.split(',')
+        return ','.join([v for v in (city.strip(), state.strip(), country.strip()) if v])
 
     def _weather_convert(self, value):
         return (value - 273.15) * 1.8 + 32
