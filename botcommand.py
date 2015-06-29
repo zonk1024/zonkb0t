@@ -57,7 +57,6 @@ class UsageTracker(object):
     def get_usage(cls, username):
         return cls(username).usage
 
-
 class Throttler(object):
     delay = .5
     output_function = None
@@ -147,14 +146,14 @@ class BotCommand(object):
         'usage'   : '_usage',
     }
 
-    def __init__(self, sender, text, callback):
-        self.sender = sender
-        self.session = auth.SessionManager(sender)
+    def __init__(self, username, text, callback):
+        self.username = username
+        self.session = auth.SessionManager(username)
         self.text = text
         Throttler.output_function = callback
         self.args = None
         if self.text and self.text[0] == self.cmd_prefix:
-            logger.log(('-!- COMMAND FROM -!- ', ': ', sender), (settings.cd['a'], None, settings.cd['n']))
+            logger.log(('-!- COMMAND FROM -!- ', ': ', username), (settings.cd['a'], None, settings.cd['n']))
             try:
                 self.args = self.parse(text)
             except ValueError as e:
@@ -411,6 +410,8 @@ class BotCommand(object):
     #### USAGE
     def _usage(self, args):
         output = []
+        if not args:
+            args = [self.username]
         for arg in args:
             output.append(UsageTracker.get_usage(arg))
         return '\n'.join(output)
