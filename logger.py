@@ -7,7 +7,11 @@ import termcolor
 
 HOME_DIR = os.getenv('HOME')
 LOG_DIR = os.path.join(HOME_DIR, 'log')
-LOG_FILE = os.path.join(LOG_DIR, '{}.log'.format(settings.redis_prefix))
+LOG_FILE = getattr(
+    settings,
+    'log_file',
+    os.path.join(LOG_DIR, '{}.log'.format(settings.redis_prefix)),
+)
 if 'log' not in os.listdir(os.getenv('HOME')):
     os.makedirs(LOG_DIR)
 LOG_FILE_OBJ = open(LOG_FILE, 'a')
