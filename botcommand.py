@@ -210,7 +210,10 @@ class BotCommand(object):
     #### HELP
     def _help(self, args):
         if not args:
-            return 'Usage: `{}help [command]`\nCommands: {}'.format(self.CMD_PREFIX, ' '.join(self.cmd_map.keys()))
+            return 'Usage: `{}help [command]`\nCommands: {}'.format(
+                self.CMD_PREFIX,
+                ' '.join(sorted(self.cmd_map.keys(), key=lambda x: x.lower())),
+            )
         if args[0] in self.cmd_map:
             return getattr(self, self.cmd_map[args[0]]).__doc__.format(cmd_prefix=self.CMD_PREFIX)
         return 'Command not found'
