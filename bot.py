@@ -19,7 +19,7 @@ class MinConversation(basechat.Conversation):
             ('<', self.person.name, '> ', text),
             (None, settings.cd['n'], None, settings.cd['pm']),
         )
-        bc = botcommand.BotCommand(self.person.name, text, self.sendText)
+        bc = botcommand.BotCommand(self, self.person.name, text)
         try:
             bc.run()
         except botcommand.ReloadException:
@@ -48,7 +48,7 @@ class MinGroupConversation(basechat.GroupConversation):
             ('<', sender, '/', self.group.name, '> ', text),
             (None, settings.cd['n'], None, settings.cd['c'], None, settings.cd['cm']),
         )
-        bc = botcommand.BotCommand(sender, text, self.sendText, groupname=self.group.name)
+        bc = botcommand.BotCommand(self, sender, text, groupname=self.group.name)
         try:
             bc.run()
         except botcommand.ReloadException:

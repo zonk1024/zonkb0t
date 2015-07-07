@@ -146,15 +146,19 @@ class BotCommand(object):
     CMD_PREFIX = '%'
 
     cmd_map = {
+        'client'      : '_client',
         'dice'        : '_dice',
         'echo'        : '_echo',
         'flush'       : '_flush',
         'help'        : '_help',
+        'join'        : '_join',
+        'leave'       : '_leave',
         'list'        : '_list',
         'login'       : '_login',
         'reddit'      : '_reddit',
         'reload'      : '_reload',
         'run'         : '_run',
+        'status'      : '_status',
         'sudo'        : '_admin',
         'test'        : '_test',
         'url'         : '_url',
@@ -164,14 +168,14 @@ class BotCommand(object):
     }
     r = redis.Redis()
 
-    def __init__(self, username, text, output_function, groupname=None):
+    def __init__(self, calling_class, username, text, groupname=None):
         self.username = username
-        self.output_function = output_function
+        self.calling_class = calling_class
         self.groupname = groupname
         self.session = auth.SessionManager(username)
         self.text = text
         self.args = None
-        self.throttler = Throttler(username, groupname, output_function)
+        self.throttler = Throttler(username, groupname, calling_class.sendText)
         if self.text and self.text[0] == self.CMD_PREFIX:
             logger.log(
                 ('-!- COMMAND FROM -!- ', ': ', username),
@@ -270,7 +274,7 @@ class BotCommand(object):
         name = args.pop(0)
         did = False
         for arg in args:
-            did = self.r.lpush(self._list_key(name))
+            did = self.r.lpush(self._list_key(name), arg)
         return str(did)
 
     def _list_show(self, args):
@@ -286,7 +290,7 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            choose_from = self.r.lrange(self._list_key(name))
+            choose_from = self.r.lrange(self._list_key(name), 0, -1)
             output.append(choose_from[random.randint(0, len(choose_from) - 1)])
         if len(output) == 1:
             return str(output[0])
@@ -502,3 +506,58 @@ class BotCommand(object):
     def _weather_raw(self, args):
         """Usage: `{cmd_prefix}weather_raw *zip_codes`"""
         return self._weather(args, raw=True)
+
+    #### JOIN
+    @auth.requires_login(user_level=auth.SessionManager.TRUSTED_USER)
+    def _join(self, args):
+        for arg in args:
+            chan = '{}{}'.format('#' if not arg.startswith('#') else '', arg)
+            print chan
+            for account in settings.accounts:
+                account.client.joinGroup(chan)
+
+    #### LEAVE
+    @auth.requires_login(user_level=auth.SessionManager.TRUSTED_USER)
+    def _leave(self, args):
+        args = args if args else [self.groupname]
+        if not args:
+            args = [] if not self.groupname else [self.groupname]
+        for arg in args:
+            chan = '{}{}'.format('#' if not arg.startswith('#') else '', arg)
+            for account in settings.accounts:
+                account.client.leave(chan)
+
+    #### STATUS
+    @auth.requires_login(user_level=auth.SessionManager.BASIC_USER)
+    def _status(self, args):
+        output = []
+        for arg in args:
+            for account in settings.accounts:
+                person = account.client.getPerson(arg)
+                if person:
+                    # print dir(person)
+                    output.append('Idle:{}  Commands:{}  Status:{}  IMP_W:{}  Online:{}'.format(
+                        repr(person.getIdleTime()),
+                        repr(person.getPersonCommands()),
+                        repr(person.getStatus()),
+                        repr(person.imperson_whois()),
+                        repr(person.isOnline()),
+                    ))
+                else:
+                    output.append('Person {} not found.'.format(repr(self.username)))
+                    # import ipdb; ipdb.set_trace() # BREAKPOINT
+        return '\n'.join(output)
+
+    #### CLIENT
+    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
+    def _client(self, args):
+        if not args:
+            return None
+        for account in settings.accounts:
+            try:
+                return repr(getattr(account, args[0])(*args[1:]))
+            except TypeError:
+                return repr(getattr(account, args[0]))
+            except AttributeError:
+                return repr(dir(account))
+

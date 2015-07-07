@@ -1,0 +1,33 @@
+COLOR magenta
+{
+left ([^ ]*)
+joined ([^ ]*)
+<[^/]*/([^>]*)>
+-!- [^ ]* in ([^ ]*)
+}
+
+COLOR cyan
+{
+^\[([^]]*)\]
+}
+
+COLOR green
+{
+<[^ /]*/[^ /]*> (.*)
+-!- COMMAND OUTPUT -!- : (.*)
+}
+
+COLOR brightred
+{
+(-!-)
+(-!- COMMAND FROM -!-)
+(-!- COMMAND OUTPUT -!-)
+}
+
+COLOR yellow
+{
+<([^/]*)/[^>]*>
+-!- ([^ ]*)
+-!- .* is now known as ([^ ]*)
+-!- COMMAND FROM -!- : ([^ ]*)
+}
