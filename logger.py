@@ -42,7 +42,7 @@ def log(strings, colors):
         LOG_FILE_OBJ.flush()
 
 if getattr(settings, 'file_logging', False):
-    if 'log' not in os.listdir(os.getenv('HOME')):
+    if 'log' not in os.listdir(HOME_DIR):
         os.makedirs(LOG_DIR)
     LOG_FILE_OBJ = open(LOG_FILE, 'a')
     atexit.register(close_log_file)

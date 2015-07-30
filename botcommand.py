@@ -14,6 +14,29 @@ import collections
 import BeautifulSoup
 
 
+def n_at_a_time(iterable, n, to_type=None):
+    if to_type is None:
+        to_type = type(iterable)
+    iterator = iter(iterable)
+    while True:
+        out = to_type()
+        for _ in xrange(n):
+            try:
+                if to_type is list:
+                    out.append(iterator.next())
+                else:
+                    out += iterator.next()
+            except StopIteration:
+                break
+        if len(out) == n:
+            yield out
+        elif out:
+            yield out
+            break
+        else:
+            break
+
+
 class UsageTracker(object):
     SECOND = 1
     MINUTE = SECOND * 60
@@ -98,7 +121,7 @@ class Throttler(object):
         if 'queue' not in self.threads[self.key]:
             self.threads[self.key]['queue'] = Queue.Queue()
         for line in text.split('\n'):
-            for chunk in self.n_at_a_time(line, self.CHUNK_SIZE):
+            for chunk in n_at_a_time(line, self.CHUNK_SIZE):
                 self.threads[self.key]['queue'].put((self.output_function, chunk))
         self.start()
 
@@ -113,29 +136,6 @@ class Throttler(object):
                 self.threads[self.key]['queue'].get(block=False)
             except (Queue.Empty, KeyError):
                 return
-
-    @staticmethod
-    def n_at_a_time(iterable, n, to_type=None):
-        if to_type is None:
-            to_type = type(iterable)
-        iterator = iter(iterable)
-        while True:
-            out = to_type()
-            for _ in xrange(n):
-                try:
-                    if to_type is list:
-                        out.append(iterator.next())
-                    else:
-                        out += iterator.next()
-                except StopIteration:
-                    break
-            if len(out) == n:
-                yield out
-            elif out:
-                yield out
-                break
-            else:
-                break
 
 
 class ReloadException(Exception):
@@ -155,6 +155,7 @@ class BotCommand(object):
         'leave'       : '_leave',
         'list'        : '_list',
         'login'       : '_login',
+        'mysql'       : '_mysql',
         'reddit'      : '_reddit',
         'reload'      : '_reload',
         'run'         : '_run',
@@ -282,7 +283,7 @@ class BotCommand(object):
             return None
         output = []
         for name in args:
-            output.extend(self.r.lrange(self._list_key(name))[::-1])
+            output.extend(self.r.lrange(self._list_key(name), 0, -1)[::-1])
         return str(output)
 
     def _list_random(self, args):
@@ -561,3 +562,15 @@ class BotCommand(object):
             except AttributeError:
                 return repr(dir(account))
 
+    #### MYSQL
+    @auth.requires_login(user_level=auth.SessionManager.GOD_USER)
+    def _mysql(self, args):
+        """Usage: `{cmd_prefix}mysql DB Query [DB Query, ...]`"""
+        output = []
+        for arg1, arg2 in n_at_a_time(args, 2):
+            cmd = '/usr/bin/mysql {} -e "{}"'.format(arg1, arg2)
+            try:
+                output.append(subprocess.check_output(cmd))
+            except Exception as e:
+                output.append('Failed on command: {} with error {}'.format(repr(cmd), e))
+        return '\n'.join(output)
