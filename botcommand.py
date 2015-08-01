@@ -5,6 +5,7 @@ import Queue
 import redis
 import shlex
 import logger
+import psutil
 import random
 import settings
 import threading
@@ -157,6 +158,7 @@ class BotCommand(object):
         'list'        : '_list',
         'login'       : '_login',
         'mysql'       : '_mysql',
+        'ps'          : '_ps',
         'reddit'      : '_reddit',
         'reload'      : '_reload',
         'run'         : '_run',
@@ -407,7 +409,7 @@ class BotCommand(object):
             return 'You are not currently logged in.'
 
     def _login_challenge(self):
-        return 'Return md5({}<PASSWORD>) to log in.'.format(self.session.challenge())
+        return 'Return md5({}<PASSWORD>\n) to log in.'.format(self.session.challenge())
 
     def _login_attempt(self, attempt):
         ttl = self.session.attempt(attempt)
@@ -580,3 +582,8 @@ class BotCommand(object):
             except Exception as e:
                 output.append('Failed on command: {} with error {}'.format(repr(cmd), e))
         return '\n'.join(output)
+
+    #### PS
+    @auth.requires_login(user_level=auth.SessionManager.BASIC_USER)
+    def _ps(self, args):
+        return '\n'.join([str(p) for p in psutil.process_iter()])
