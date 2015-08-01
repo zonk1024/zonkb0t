@@ -21,7 +21,7 @@ class MinConversation(basechat.Conversation):
         )
         bc = botcommand.BotCommand(self, self.person.name, text)
         try:
-            bc.run()
+            bc.execute()
         except botcommand.ReloadException:
             self.sendText('Reloading')
             reload(auth)
@@ -50,7 +50,7 @@ class MinGroupConversation(basechat.GroupConversation):
         )
         bc = botcommand.BotCommand(self, sender, text, groupname=self.group.name)
         try:
-            bc.run()
+            bc.execute()
         except botcommand.ReloadException:
             reload(botcommand)
 

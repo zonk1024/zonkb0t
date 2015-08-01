@@ -146,6 +146,7 @@ class BotCommand(object):
     CMD_PREFIX = '%'
 
     cmd_map = {
+        'alias'       : '_admin',
         'client'      : '_client',
         'dice'        : '_dice',
         'echo'        : '_echo',
@@ -160,7 +161,7 @@ class BotCommand(object):
         'reload'      : '_reload',
         'run'         : '_run',
         'status'      : '_status',
-        'sudo'        : '_admin',
+        'stfu'        : '_flush',
         'test'        : '_test',
         'url'         : '_url',
         'usage'       : '_usage',
@@ -197,11 +198,16 @@ class BotCommand(object):
             return []
         return args
 
-    def run(self):
+    def execute(self):
+        t = threading.Thread(target=self._execute)
+        t.daemon = True
+        t.start()
+
+    def _execute(self):
         if not self.args:
             return None
         if len(self.args[0]) == len(self.CMD_PREFIX):
-            # so they can do ! cmd or !cmd
+            # so they can do % cmd or %cmd
             self.args.pop(0)
         else:
             # trim
